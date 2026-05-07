@@ -54,7 +54,6 @@ open class BaseGameplayStrategy(val initialLevel:Int= 0,val initialScore: Int = 
         gameMode = GameMode.NORMAL
     }
 
-
     override fun changeMode(newGameMode: GameMode){
         gameMode = newGameMode
     }

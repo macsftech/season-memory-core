@@ -23,7 +23,6 @@ class Gameplay(
 ): GameContext {
 
     override var uiEventListener: UiEventListener? = null
-
     private var combo = 0
     private val board = Board()
     private var match = 0
@@ -33,7 +32,6 @@ class Gameplay(
     private var isStarting:Boolean = false
     private var firstCardFlipped: Int? = null
     private val cardFlippedList:MutableList<Int> = mutableListOf()
-
     private var countdownSecond : Long = 5000
     private lateinit var gameMode: GameMode
     private lateinit var comboTimer: ComboTimer
@@ -120,8 +118,6 @@ class Gameplay(
             cardFlippedList.forEachIndexed { index,currentCard ->
                 var currentCardValue = board.getCardValue(currentCard)
                 if(index >= 1 && currentCardValue == cardFirstValue){
-                    println("primeira carta => ${cardFlippedList.first()} valor:$cardFirstValue")
-                    println("segunda carta => $currentCard valor:$currentCardValue")
                     match++
                     board.matchedCard(cardFlippedList.first())
                     board.matchedCard(currentCard)
