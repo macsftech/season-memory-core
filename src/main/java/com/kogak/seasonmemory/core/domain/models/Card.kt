@@ -5,11 +5,14 @@
  */
 
 package com.kogak.seasonmemory.core.domain.models
+
+import com.kogak.seasonmemory.core.common.Position
+
 data class Card(
     val value: Short,
     var faceUp: Boolean = false,
     var isMatched: Boolean = false,
-    val position: IntArray = IntArray(2),
+    val position: Position = Position(0,0),
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

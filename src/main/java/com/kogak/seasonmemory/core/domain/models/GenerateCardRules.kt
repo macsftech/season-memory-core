@@ -6,7 +6,7 @@
 
 package com.kogak.seasonmemory.core.domain.models
 
-data class BoardRules(
+data class GenerateCardRules(
     val shuffled:Boolean = true,
     val maxCardsPerMatch:Int = 2,
     val probability:Float =1f

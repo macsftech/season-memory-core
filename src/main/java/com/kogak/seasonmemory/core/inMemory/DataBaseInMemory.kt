@@ -18,14 +18,12 @@ class DataBaseInMemory:IDatabaseAdapter {
 
     override suspend fun saveRecord(gameId: String, record: GameRecord) {
         return withContext(Dispatchers.IO){
-            delay(100)
             gameRecordList[gameId] = record
         }
     }
 
     override suspend fun loadRecord(gameId: String): GameRecord {
         return withContext(Dispatchers.IO){
-            delay(100)
             return@withContext gameRecordList[gameId]?: GameRecord()
         }
     }

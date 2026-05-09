@@ -1,29 +1,32 @@
 package com.kogak.seasonmemory.core.domain
 
+import com.kogak.seasonmemory.core.common.Position
 import com.kogak.seasonmemory.core.common.Storage
-import com.kogak.seasonmemory.core.domain.models.BoardRules
+import com.kogak.seasonmemory.core.domain.models.GenerateCardRules
 import com.kogak.seasonmemory.core.domain.models.BoardSlot
+import com.kogak.seasonmemory.core.domain.models.BoardSlotBluePrint
 import com.kogak.seasonmemory.core.domain.models.Card
 import com.kogak.seasonmemory.core.domain.models.CardBlueprint
 import kotlin.random.Random
 
 class Board(
+    private val generateCardRules: GenerateCardRules,
     private val rows:Int = 8,
-    private val cols:Int = 6
+    private val cols:Int = 6,
 ) {
     private lateinit var map:List<String>
     private lateinit var storage: Storage
     private lateinit var cards : List<CardBlueprint>
 
-    val slots = Array(rows) { Array(cols){ BoardSlot(intArrayOf(0,0)) }}
+    val slots = Array(rows) { Array(cols){ BoardSlotBluePrint(intArrayOf(0,0)) }}
 
     init{
         storage = Storage.create(rows*cols)
     }
 
-    fun start(rules: BoardRules = BoardRules()){
+    fun start(){
         if(map == null ) throw IllegalArgumentException("Jogo não pode ser iniciado!")
-        generateGrid(rules)
+        generateGrid(generateCardRules)
     }
 
     fun loadMap(newMap:List<String>){
@@ -62,38 +65,32 @@ class Board(
         return storage.isFaceUp(entityCard)
     }
 
-    fun moveCard(oldBoardPosition:IntArray, newBoardPosition:IntArray){
+    fun moveCard(oldBoardPosition:Position, newBoardPosition:Position):Card?{
+        val oldSlot = slots[oldBoardPosition.row][oldBoardPosition.col]
+        val nextSlot = slots[newBoardPosition.row][newBoardPosition.col]
 
-        val oldSlot = slots[oldBoardPosition[0]][oldBoardPosition[1]]
-        val nextSlot = slots[newBoardPosition[0]][newBoardPosition[1]]
-
-        //println("slot origem:$oldSlot slot destino: $nextSlot")
         //se slot antigo tem carta e o novo slot não tem carta
-
-        if(oldSlot.isBlocked || oldSlot.card < 0 ||  nextSlot.isBlocked || nextSlot.card >= 0 ){
-            println("Não é possivel move carta")
-        }
-        else{
+        if(!oldSlot.isBlocked && oldSlot.card > 0 && !nextSlot.isBlocked && nextSlot.card < 0 ){
             nextSlot.card = oldSlot.card
             oldSlot.card = -1
+            return getCard(newBoardPosition)
         }
-
-        //println("slot origem:$oldSlot slot destino: $nextSlot")
+        return null
     }
 
-    fun getCard(slotPosition:IntArray):Card?{
-        val slot = slots[slotPosition[0]][slotPosition[1]]
-        if(slot.card < 0) return null
+    fun getCard(slotPosition: Position):Card?{
+        val slot = slots[slotPosition.row][slotPosition.col]
 
+        if(slot.card < 0) return null
         return Card(
             storage.getValue(slot.card),
             storage.isFaceUp(slot.card),
             storage.isMatched(slot.card),
-            position = slotPosition.copyOf()
+            position = slotPosition
         )
     }
 
-    private fun generateGrid(rules: BoardRules) {
+    private fun generateGrid(rules: GenerateCardRules) {
         if (rules.shuffled) storage.shuffled()
 
         // Nomenclatura clara: armazena os pares (Linha, Coluna) disponíveis para cartas
@@ -111,7 +108,7 @@ class Board(
                         validPositions.add(Pair(row, colIndex))
                     }
 
-                    slots[row][colIndex] = BoardSlot(
+                    slots[row][colIndex] = BoardSlotBluePrint(
                         position = intArrayOf(row, colIndex),
                         card = -1,
                         isBlocked = shouldBlock
@@ -121,12 +118,16 @@ class Board(
         }
 
         // Gera o deck de cartas apenas com a quantidade exata de espaços válidos no mapa
-        val cardsGenerated = generateCards(
+        var cardsGenerated = generateCards(
             validPositions.size,
             rules.maxCardsPerMatch,
             rules.probability
         )
-        if(rules.shuffled) cardsGenerated.shuffled()
+
+        if(rules.shuffled) {
+            cardsGenerated.shuffled()
+        }
+
         cardsGenerated.forEachIndexed { index, card ->
             val row = validPositions[index].first
             val col = validPositions[index].second
@@ -139,8 +140,6 @@ class Board(
             )
             slots[row][col].card = cardIndex
         }
-
-        println(storage.debug().getValues())
     }
 
     private fun generateCards(deckSize:Int, maxCardsPerMatch:Int, probability: Float):List<CardBlueprint>{
@@ -149,30 +148,39 @@ class Board(
 
         // 1. Cria um "saco" de números únicos (1 a 99) já embaralhado.
         // Isso evita sorteios repetidos e falsos matches.
-        val availableValues = (1..99).shuffled().iterator()
+        val availableValues = (1..99).iterator()
 
         // 2. Preenche o deck enquanto houver espaço
         while (resultDeck.size < deckSize) {
-            val cardValue = availableValues.next().toShort()
-            val newCard = CardBlueprint(cardValue)
+            val spaceLeft = deckSize - resultDeck.size
+            val cardValue = if (availableValues.hasNext()) availableValues.next().toShort() else 0
 
-            // Começa sempre assumindo que é um par normal (o padrão do jogo)
-            var groupSize = 2
+            //val newCard = CardBlueprint(cardValue)
 
             // Se a fase permite combos maiores, jogamos os dados (probabilidade)
-            if (maxCardsPerMatch > 2 && Random.nextFloat() < probability) {
-                // BINGO! A probabilidade bateu.
-                // Agora sorteia aleatoriamente se vai ser um trio (3) ou quarteto (4)
-                groupSize = Random.nextInt(3, maxCardsPerMatch + 1)
+            var groupSize = when {
+                maxCardsPerMatch > 2 && Random.nextFloat() < probability -> {
+                    // BINGO! A probabilidade bateu.
+                    // Agora sorteia aleatoriamente se vai ser um trio (3) ou quarteto (4)
+                    maxCardsPerMatch // Random.nextInt(3, maxCardsPerMatch + 1)
+                }
+                else -> 2
             }
 
-            // 4. Trava de Segurança Crítica (Continua igual)
-            val spaceLeft = deckSize - resultDeck.size
-            val actualGroupSize = if (groupSize > spaceLeft) spaceLeft else groupSize
+            // 2. Ajuste de segurança: O grupo não pode ser maior que o espaço que sobra
+            // E nem pode deixar sobrar apenas 1 espaço (já que o grupo mínimo é 2)
+            if (groupSize > spaceLeft) {
+                groupSize = spaceLeft
+            }
 
-            // 5. Adiciona as cartas
-            for (i in 0 until actualGroupSize) {
-                resultDeck.add(newCard.copy())
+            // Se após o sorteio sobrar 1 espaço sobrando no deck total,
+            // aumentamos o grupo atual para absorver esse espaço ou reduzimos.
+            if (spaceLeft - groupSize == 1) {
+                groupSize--
+            }
+
+            repeat(groupSize) {
+                resultDeck.add(CardBlueprint(cardValue))
             }
         }
        return resultDeck

@@ -7,6 +7,8 @@
 package com.kogak.seasonmemory.core.domain
 
 import com.kogak.seasonmemory.core.common.Database
+import com.kogak.seasonmemory.core.common.Position
+import com.kogak.seasonmemory.core.domain.models.BoardSlot
 import com.kogak.seasonmemory.core.domain.models.GameMode
 import com.kogak.seasonmemory.core.domain.models.GameRecord
 import com.kogak.seasonmemory.core.domain.models.Card
@@ -19,16 +21,15 @@ import kotlin.random.Random
 
 class Gameplay(
     private val strategy: BaseGameplayStrategy,
+    private val board:Board,
     private val databaseAdapter: IDatabaseAdapter = DataBaseInMemory()
 ): GameContext {
 
-    override var uiEventListener: UiEventListener? = null
+    override var gameplayEventListener: GameplayEventListener? = null
     private var combo = 0
-    private val board = Board()
     private var match = 0
     private var isMatch = false
     private var currentScore:Int = 0
-    private var isShuffled:Boolean = true
     private var isStarting:Boolean = false
     private var firstCardFlipped: Int? = null
     private val cardFlippedList:MutableList<Int> = mutableListOf()
@@ -37,18 +38,18 @@ class Gameplay(
     private lateinit var comboTimer: ComboTimer
     private lateinit var scope: CoroutineScope
 
-    fun init(pairs:Int,shuffled:Boolean=true){
+    fun initialize(){
         Database.initialize(databaseAdapter)
-        isShuffled = shuffled
         if(!isStarting) {
-            println("começou!")
+            gameplayEventListener?.showMessage("[CORE] Gameplay começou!")
+            println("[CORE] Gameplay começou!")
             loadGameRecord()
+            strategy.onTurnStart()
             board.loadMap(strategy.getCurrentMap())
-            board.start(strategy.getRules())
-            isStarting = true
+            board.start()
             comboTimer = ComboTimer(scope)
-            init(pairs,isShuffled)
             updateStateUI()
+            isStarting = true
         }
     }
 
@@ -63,6 +64,7 @@ class Gameplay(
             }
         }
     }
+
 
     fun saveGameRecord(){
         scope.launch {
@@ -79,29 +81,28 @@ class Gameplay(
         }
     }
 
-    private fun generateCards(pairs:Int):List<CardBlueprint>{
-        var originalCard = mutableListOf<CardBlueprint>()
-        for ( value in 0 until pairs ){
-            originalCard.add(CardBlueprint(Random.nextInt(1,99).toShort()))
-        }
-        return originalCard + originalCard
-    }
-
-    fun getCard(slotPosition:IntArray): Card? {
+    fun getCard(slotPosition: Position): Card? {
         return board.getCard(slotPosition)
     }
 
-    fun moveCard(oldBoardPosition:IntArray, newBoardPosition:IntArray){
-       board.moveCard(oldBoardPosition,newBoardPosition)
+    fun moveCard(slotPosition:Position, newSlotPosition:Position){
+        val cardMoved = board.moveCard(slotPosition,newSlotPosition)
+        if(cardMoved is Card){
+            updateStateUI()
+        }
+        else {
+            gameplayEventListener?.showMessage("não é possivel move carta!")
+            println("\n não é possivel move carta!")
+        }
     }
 
-    fun flipCard(slotPosition: IntArray){
-        val card = board.slots[slotPosition[0]][slotPosition[1]].card
+    fun flipCard(slotPosition: Position){
+        val card = board.slots[slotPosition.row][slotPosition.col].card
         if(card > 0 ){
-            if(!board.getCardMatched(card)){
+            if(!board.getCardMatched(card) && !board.getCardFaceUP(card)){ // não pode ter sido encontrada nem esta virada para cima
                 board.flipCard(card)
                 cardFlippedList.add(card)
-                checkMatch()
+                if(cardFlippedList.size >= 2 ) checkMatch()
             }
             firstCardFlipped = firstCardFlipped?: card
             updateStateUI()
@@ -113,17 +114,22 @@ class Gameplay(
     }
 
     private fun checkMatch():Boolean {
+        val firstCardFlipped = cardFlippedList.first()
+        match = 0
         if (cardFlippedList.size > 1 ){
-            val cardFirstValue = board.getCardValue(cardFlippedList.first())
+            val cardFirstValue = board.getCardValue(firstCardFlipped)
+            var countCardsMatched = 1
             cardFlippedList.forEachIndexed { index,currentCard ->
                 var currentCardValue = board.getCardValue(currentCard)
                 if(index >= 1 && currentCardValue == cardFirstValue){
-                    match++
-                    board.matchedCard(cardFlippedList.first())
+                    countCardsMatched++
+                    board.matchedCard(firstCardFlipped)
                     board.matchedCard(currentCard)
-                    print(board.slots.flatten())
+                }else{
+                    board.faceDownCard(currentCard)
                 }
             }
+            match = countCardsMatched
             updateStateUI()
         }
         return match > 0
@@ -137,7 +143,7 @@ class Gameplay(
         TODO("encerrar todos os listener timers jobs e tarefas em segundo planos...")
         comboTimer.stop()
         scope.cancel()
-        uiEventListener = null
+        gameplayEventListener = null
     }
 
     private fun checkCombo(){
@@ -176,7 +182,14 @@ class Gameplay(
     }
 
     private fun updateStateUI(){
-        uiEventListener?.onGameStateUpdated(board.slots, combo, strategy.score)
+            val slots = board.slots.flatten().map {
+                val ( position, _cardEntity, isBlocked ) =  it
+                val cardBlueprint = getCard(Position(position[0],position[1]))?.let {
+                    CardBlueprint(it.value,it.faceUp,it.isMatched)
+                }
+                BoardSlot(position, isBlocked, card = cardBlueprint )
+         }
+        gameplayEventListener?.onGameStateUpdated(slots, combo, strategy.score)
     }
 
 //    fun setUiEventListener(newUiEventListener:UiEventListener){

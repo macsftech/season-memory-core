@@ -8,7 +8,7 @@
 package com.kogak.seasonmemory.core.domain
 
 interface GameContext {
-   val uiEventListener:UiEventListener?
+   val gameplayEventListener:GameplayEventListener?
    fun addScore(points:Long)
    fun addCombo(combo:Int)
    fun getBoard(): Board

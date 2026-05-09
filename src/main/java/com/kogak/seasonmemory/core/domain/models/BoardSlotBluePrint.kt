@@ -6,8 +6,8 @@
 
 package com.kogak.seasonmemory.core.domain.models
 
-data class BoardSlot(
+data class BoardSlotBluePrint(
     val position: IntArray = IntArray(2),
-    var isBlocked: Boolean = false,
-    var card:CardBlueprint?
+    var card: Int = -1,
+    var isBlocked: Boolean = false
 )
